@@ -142,7 +142,7 @@ vcpkg install mtpool[delayed,shared] --overlay-ports=<repo>/ports
     {
       "kind": "git",
       "repository": "https://github.com/feng9201/vcpkg-registrys.git",
-      "baseline": "fcb7929aa64c292de6a349172f493cfba591b816",
+      "baseline": "bb227c143f9d71b8c42d9c8813cf2c22f6e1d9b7",
       "packages": ["mtpool"]
     }
   ]
