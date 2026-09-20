@@ -134,6 +134,21 @@ vcpkg install mtpool[delayed,shared] --overlay-ports=<repo>/ports
 }
 ```
 
+`vcpkg-configuration.json` 要把 `mtpool` 指到私有 registry（`baseline` 用已包含 1.0.0 的提交）：
+
+```json
+{
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/feng9201/vcpkg-registrys.git",
+      "baseline": "2730824e1581f6725045a64af43a8ce2c2418438",
+      "packages": ["mtpool"]
+    }
+  ]
+}
+```
+
 ```cmake
 find_package(mtPool CONFIG REQUIRED)
 target_link_libraries(your_app PRIVATE mtPool::mtPool)

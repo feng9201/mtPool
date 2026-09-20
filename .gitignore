@@ -1,8 +1,8 @@
 .vs
 .vscode
 out
-build
-build-*
+build/
+build-*/
 bin
 lib
 target
