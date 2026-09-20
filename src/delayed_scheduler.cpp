@@ -3,11 +3,30 @@
 #include "mtPool/pending_task_queue.h"
 #include "mtPool/sequence_tracker.h"
 
+#include <cassert>
 #include <chrono>
+#include <cstdio>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace mtPool {
+
+namespace {
+
+// 标记当前线程正在执行延迟任务回调，用于检测 WaitUntilIdle/Shutdown 自等死锁。
+thread_local bool g_in_delayed_task = false;
+
+void FailIfInDelayedTask(const char* api) {
+    if (g_in_delayed_task) {
+        throw std::logic_error(std::string("mtPool: ") + api +
+                               " called from a delayed task callback would deadlock "
+                               "(it waits for the calling task itself)");
+    }
+}
+
+}  // namespace
 
 DelayedScheduler::DelayedScheduler(TaskExecutor& executor)
     : executor_(executor),
@@ -52,6 +71,8 @@ void DelayedScheduler::NotifySequenceReleased() {
 }
 
 void DelayedScheduler::Shutdown() {
+    FailIfInDelayedTask("Shutdown()");
+
     bool expected = false;
     if (!stop_.compare_exchange_strong(expected, true)) {
         if (thread_.joinable()) {
@@ -87,6 +108,8 @@ void DelayedScheduler::Shutdown() {
 }
 
 void DelayedScheduler::WaitUntilIdle() {
+    FailIfInDelayedTask("WaitUntilIdle()");
+
     std::unique_lock<std::mutex> lock(mutex_);
     cv_->wait(lock, [this] {
         return queue_->ActiveCount() == 0 && in_flight_.load() == 0;
@@ -142,12 +165,18 @@ void DelayedScheduler::DispatchDueTasks() {
         CancelStatePtr cancel = item.cancel;
         Task task = std::move(item.task);
         executor_.Execute([this, token, cancel, task = std::move(task)]() mutable {
+            g_in_delayed_task = true;
             try {
                 if (task) {
                     task();
                 }
+            } catch (const std::logic_error& e) {
+                // API 误用（如回调里 WaitUntilIdle/Shutdown）：可见，不死锁
+                std::fprintf(stderr, "mtPool misuse: %s\n", e.what());
+                assert(false && "mtPool API misused in delayed task callback");
             } catch (...) {
             }
+            g_in_delayed_task = false;
             if (cancel) {
                 cancel->MarkFinished();
             }

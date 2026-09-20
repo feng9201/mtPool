@@ -8,7 +8,10 @@ DelayedTaskRunner::DelayedTaskRunner(TaskExecutor& executor)
     : scheduler_(std::make_unique<DelayedScheduler>(executor)) {}
 
 DelayedTaskRunner::~DelayedTaskRunner() {
-    Shutdown();
+    try {
+        Shutdown();
+    } catch (...) {
+    }
 }
 
 DelayedTaskHandle DelayedTaskRunner::PostTask(Task task, SequenceToken token) {

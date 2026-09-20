@@ -35,11 +35,12 @@ public:
 
     // SKIP_ON_SHUTDOWN semantics (same as SequencedWorkerPool delayed tasks):
     // pending tasks are cancelled and discarded, tasks already running on the
-    // pool are awaited. Do not call from a pool worker or a delayed callback.
+    // pool are awaited. Throws std::logic_error if called from a delayed task
+    // callback (it would deadlock waiting for the caller itself).
     void Shutdown();
 
-    // Blocks until the queue is empty and nothing is running. Do not call
-    // from a pool worker or a delayed callback (it would wait on itself).
+    // Blocks until the queue is empty and nothing is running. Throws
+    // std::logic_error if called from a delayed task callback.
     void WaitUntilIdle();
 
     std::size_t PendingCount() const;

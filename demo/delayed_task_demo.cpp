@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <future>
 #include <iostream>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -125,6 +126,30 @@ void DemoCancelBreaksPromise() {
     Expect(broken, "future 抛 broken_promise（任务已被调度线程丢弃）");
 }
 
+void DemoSelfWaitDetected() {
+    std::cout << "\n== 7. 回调里调 WaitUntilIdle/Shutdown 不死锁，抛 logic_error ==\n";
+    std::atomic<bool> wait_detected{false};
+    std::atomic<bool> shutdown_detected{false};
+    mtPool::delayed().PostDelayedTask(
+        [&] {
+            try {
+                mtPool::delayed().WaitUntilIdle();  // 自等，必须 fail fast
+            } catch (const std::logic_error&) {
+                wait_detected.store(true);
+            }
+            try {
+                mtPool::delayed().Shutdown();  // 同上
+            } catch (const std::logic_error&) {
+                shutdown_detected.store(true);
+            }
+        },
+        20ms);
+
+    mtPool::delayed().WaitUntilIdle();  // 主线程等；若死锁这里不返回
+    Expect(wait_detected.load(), "回调里 WaitUntilIdle 抛 logic_error");
+    Expect(shutdown_detected.load(), "回调里 Shutdown 抛 logic_error");
+}
+
 }  // namespace
 
 int main() {
@@ -136,6 +161,7 @@ int main() {
     DemoSubmitFuture();
     DemoNamedToken();
     DemoCancelBreaksPromise();
+    DemoSelfWaitDetected();
     std::cout << "\n==== " << (g_failures == 0 ? "ALL PASSED" : "FAILED") << " (" << g_failures
               << " failure(s)) ====\n";
     return g_failures == 0 ? 0 : 1;

@@ -223,7 +223,7 @@ mtPool::pool().detach_task([] {
 });
 ```
 
-`WaitUntilIdle()` 同样不要在延迟任务回调里调用。
+`WaitUntilIdle()` / `Shutdown()` 在延迟任务回调里调用会抛 `std::logic_error`（fail fast），不会像上面那样卡死。
 
 ## 行为要点
 
@@ -231,9 +231,10 @@ mtPool::pool().detach_task([] {
 2. **无 token**：到期后并行进池，一个任务耗时长不会重新计算另一个的 delay。
 3. **有 token**：到期后若该序列仍被占用，任务留在队列里，等前一个释放再派发。
 4. 调度线程本身不跑业务回调，只负责睡到点、再 `detach_task`。
-5. **Shutdown**（含进程退出时静态析构）：未到期任务取消并销毁——handle 变 `IsCancelled`，`SubmitDelayed` 的 future 抛 `std::future_errc::broken_promise`；已派发到池里的任务会等跑完。不要在池线程或延迟回调里调 `Shutdown()` / `WaitUntilIdle()`（会等自己）。
+5. **Shutdown**（含进程退出时静态析构）：未到期任务取消并销毁——handle 变 `IsCancelled`，`SubmitDelayed` 的 future 抛 `std::future_errc::broken_promise`；已派发到池里的任务会等跑完。
 6. **Cancel** 一个还没派发的任务会立刻唤醒调度线程把它丢掉，不会等到原定到期时间；若是 `SubmitDelayed` 的任务，future 同样立刻 `broken_promise`。
+7. 在延迟回调里调 `Shutdown()` / `WaitUntilIdle()` 会立即抛 `std::logic_error`（debug 下同时 assert，stderr 有日志），不会死锁。
 
 ## Demo
 
-`demo/delayed_task_demo.cpp` 覆盖：并行到期、同 token 串行、Cancel、`SubmitDelayed`、Named token、取消后 future `broken_promise`。Release 下应全部 PASS。
+`demo/delayed_task_demo.cpp` 覆盖：并行到期、同 token 串行、Cancel、`SubmitDelayed`、Named token、取消后 future `broken_promise`、回调内自等检测。Release 下应全部 PASS。
