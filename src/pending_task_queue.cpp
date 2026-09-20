@@ -5,6 +5,7 @@ namespace mtPool {
 void PendingTaskQueue::Insert(DelayedTask task) {
     auto key = MakeScheduleKey(task);
     tasks_.emplace(key, std::move(task));
+    ++active_count_;
 }
 
 std::vector<DelayedTask> PendingTaskQueue::PopDueRunnable(TimePoint now, SequenceTracker& tracker) {
@@ -13,6 +14,7 @@ std::vector<DelayedTask> PendingTaskQueue::PopDueRunnable(TimePoint now, Sequenc
         DelayedTask& candidate = it->second;
         if (candidate.cancel && candidate.cancel->IsCancelled()) {
             it = tasks_.erase(it);
+            --active_count_;
             continue;
         }
         if (candidate.run_at > now) {
@@ -24,11 +26,13 @@ std::vector<DelayedTask> PendingTaskQueue::PopDueRunnable(TimePoint now, Sequenc
         }
         if (candidate.cancel && !candidate.cancel->TryDispatch()) {
             it = tasks_.erase(it);
+            --active_count_;
             continue;
         }
         tracker.Acquire(candidate.token);
         due.push_back(std::move(candidate));
         it = tasks_.erase(it);
+        --active_count_;
     }
     return due;
 }
@@ -54,13 +58,7 @@ std::size_t PendingTaskQueue::Size() const {
 }
 
 std::size_t PendingTaskQueue::ActiveCount() const {
-    std::size_t count = 0;
-    for (const auto& entry : tasks_) {
-        if (!entry.second.cancel || !entry.second.cancel->IsCancelled()) {
-            ++count;
-        }
-    }
-    return count;
+    return active_count_;
 }
 
 std::vector<DelayedTask> PendingTaskQueue::TakeAll() {
@@ -70,6 +68,7 @@ std::vector<DelayedTask> PendingTaskQueue::TakeAll() {
         all.push_back(std::move(entry.second));
     }
     tasks_.clear();
+    active_count_ = 0;
     return all;
 }
 

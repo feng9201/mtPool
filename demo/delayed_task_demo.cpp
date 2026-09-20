@@ -150,6 +150,22 @@ void DemoSelfWaitDetected() {
     Expect(shutdown_detected.load(), "回调里 Shutdown 抛 logic_error");
 }
 
+void DemoCancelWakesWaitUntilIdle() {
+    std::cout << "\n== 8. WaitUntilIdle 等待中 Cancel 能及时唤醒返回 ==\n";
+    auto handle = mtPool::delayed().PostDelayedTask([] { /* 不会跑 */ }, 5s);
+
+    std::atomic<bool> idle_returned{false};
+    std::thread waiter([&] {
+        mtPool::delayed().WaitUntilIdle();
+        idle_returned.store(true);
+    });
+    std::this_thread::sleep_for(50ms);  // 确保 waiter 已在条件等待里
+
+    Expect(handle.Cancel(), "Cancel 成功");
+    waiter.join();  // Cancel 唤醒链路断了的话，这里会等到 5s 到期
+    Expect(idle_returned.load(), "Cancel 后 WaitUntilIdle 及时返回");
+}
+
 }  // namespace
 
 int main() {
@@ -162,6 +178,7 @@ int main() {
     DemoNamedToken();
     DemoCancelBreaksPromise();
     DemoSelfWaitDetected();
+    DemoCancelWakesWaitUntilIdle();
     std::cout << "\n==== " << (g_failures == 0 ? "ALL PASSED" : "FAILED") << " (" << g_failures
               << " failure(s)) ====\n";
     return g_failures == 0 ? 0 : 1;

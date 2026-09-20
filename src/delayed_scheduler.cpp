@@ -159,6 +159,9 @@ void DelayedScheduler::DispatchDueTasks() {
         due = queue_->PopDueRunnable(Clock::now(), *tracker_);
         in_flight_.fetch_add(due.size());
     }
+    // PopDueRunnable 可能清掉了已取消的任务（ActiveCount 变小），
+    // 唤醒 WaitUntilIdle 的等待者重新检查条件，否则会睡到下一次事件。
+    cv_->notify_all();
 
     for (auto& item : due) {
         SequenceToken token = item.token;

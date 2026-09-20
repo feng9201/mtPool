@@ -28,6 +28,9 @@ public:
 
     bool Empty() const;
     std::size_t Size() const;
+
+    // O(1)：计数随 Insert/erase 维护。已取消但尚未被调度线程清掉的任务
+    // 仍算在内（清掉时才减），调用方靠 cv 唤醒后重新检查。
     std::size_t ActiveCount() const;
 
     // Move every pending task out and clear the queue (used by Shutdown).
@@ -35,6 +38,7 @@ public:
 
 private:
     std::map<ScheduleKey, DelayedTask> tasks_;
+    std::size_t active_count_ = 0;
 };
 
 }  // namespace mtPool
