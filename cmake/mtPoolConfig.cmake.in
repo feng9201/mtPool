@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+
+set(MTPOOL_ENABLE_DELAYED @MTPOOL_ENABLE_DELAYED@)
+set(MTPOOL_BUILD_SHARED @MTPOOL_BUILD_SHARED@)
+
+find_dependency(Threads)
+include("${CMAKE_CURRENT_LIST_DIR}/mtPoolTargets.cmake")

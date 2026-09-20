@@ -1,0 +1,26 @@
+{
+    "name": "mtpool",
+    "version": "1.0.0",
+    "homepage": "https://github.com/feng9201/mtPool",
+    "description": "Process-wide C++17 thread pool with optional delayed tasks",
+    "license": "MIT",
+    "dependencies": [
+        {
+            "name": "vcpkg-cmake",
+            "host": true
+        },
+        {
+            "name": "vcpkg-cmake-config",
+            "host": true
+        }
+    ],
+    "default-features": [],
+    "features": {
+        "shared": {
+            "description": "Build as shared library. Without this feature, linkage follows the triplet."
+        },
+        "delayed": {
+            "description": "Enable wall-clock delayed tasks (PostDelayedTask / SequenceToken)"
+        }
+    }
+}

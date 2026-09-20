@@ -1,0 +1,9 @@
+mtPool provides CMake targets:
+
+  find_package(mtPool CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE mtPool::mtPool)
+
+Optional features:
+
+  mtpool[shared]   force shared library
+  mtpool[delayed]  enable PostDelayedTask / SequenceToken
