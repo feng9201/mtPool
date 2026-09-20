@@ -30,6 +30,9 @@ public:
     std::size_t Size() const;
     std::size_t ActiveCount() const;
 
+    // Move every pending task out and clear the queue (used by Shutdown).
+    std::vector<DelayedTask> TakeAll();
+
 private:
     std::map<ScheduleKey, DelayedTask> tasks_;
 };

@@ -33,12 +33,20 @@ public:
                                       Duration delay,
                                       SequenceToken token = SequenceToken());
 
+    // SKIP_ON_SHUTDOWN semantics (same as SequencedWorkerPool delayed tasks):
+    // pending tasks are cancelled and discarded, tasks already running on the
+    // pool are awaited. Do not call from a pool worker or a delayed callback.
     void Shutdown();
+
+    // Blocks until the queue is empty and nothing is running. Do not call
+    // from a pool worker or a delayed callback (it would wait on itself).
     void WaitUntilIdle();
 
     std::size_t PendingCount() const;
     std::size_t InFlightCount() const;
 
+    // If the task is cancelled or discarded by Shutdown before it runs, the
+    // future becomes ready with std::future_errc::broken_promise.
     template <typename F>
     auto SubmitDelayed(F&& func, Duration delay, SequenceToken token = SequenceToken())
         -> std::future<std::invoke_result_t<std::decay_t<F>>> {

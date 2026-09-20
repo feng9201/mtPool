@@ -1,6 +1,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <future>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -105,15 +107,35 @@ void DemoNamedToken() {
     Expect(!a.Equals(c), "异名 token 不等");
 }
 
+void DemoCancelBreaksPromise() {
+    std::cout << "\n== 6. 取消后 promise 立即 broken，future 不干等 ==\n";
+    auto promise = std::make_shared<std::promise<int>>();
+    auto fut = promise->get_future();
+    auto handle = mtPool::delayed().PostDelayedTask(
+        [promise] { promise->set_value(1); }, 5s);
+    promise.reset();  // 只留任务里的引用，任务被丢弃时 promise 才会析构
+    Expect(handle.Cancel(), "Cancel 成功");
+
+    bool broken = false;
+    try {
+        (void)fut.get();
+    } catch (const std::future_error& e) {
+        broken = (e.code() == std::future_errc::broken_promise);
+    }
+    Expect(broken, "future 抛 broken_promise（任务已被调度线程丢弃）");
+}
+
 }  // namespace
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);  // 实时输出，便于定位
     std::cout << "mtPool delayed-task demo\n";
     DemoParallelDelayed();
     DemoSequenceTokenSerial();
     DemoCancel();
     DemoSubmitFuture();
     DemoNamedToken();
+    DemoCancelBreaksPromise();
     std::cout << "\n==== " << (g_failures == 0 ? "ALL PASSED" : "FAILED") << " (" << g_failures
               << " failure(s)) ====\n";
     return g_failures == 0 ? 0 : 1;

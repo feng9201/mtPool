@@ -63,4 +63,14 @@ std::size_t PendingTaskQueue::ActiveCount() const {
     return count;
 }
 
+std::vector<DelayedTask> PendingTaskQueue::TakeAll() {
+    std::vector<DelayedTask> all;
+    all.reserve(tasks_.size());
+    for (auto& entry : tasks_) {
+        all.push_back(std::move(entry.second));
+    }
+    tasks_.clear();
+    return all;
+}
+
 }  // namespace mtPool

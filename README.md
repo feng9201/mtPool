@@ -231,8 +231,9 @@ mtPool::pool().detach_task([] {
 2. **无 token**：到期后并行进池，一个任务耗时长不会重新计算另一个的 delay。
 3. **有 token**：到期后若该序列仍被占用，任务留在队列里，等前一个释放再派发。
 4. 调度线程本身不跑业务回调，只负责睡到点、再 `detach_task`。
-5. 进程退出时 `delayed()` / `pool()` 静态析构会 `Shutdown`，未到期任务丢弃，已派发的会等到跑完。
+5. **Shutdown**（含进程退出时静态析构）：未到期任务取消并销毁——handle 变 `IsCancelled`，`SubmitDelayed` 的 future 抛 `std::future_errc::broken_promise`；已派发到池里的任务会等跑完。不要在池线程或延迟回调里调 `Shutdown()` / `WaitUntilIdle()`（会等自己）。
+6. **Cancel** 一个还没派发的任务会立刻唤醒调度线程把它丢掉，不会等到原定到期时间；若是 `SubmitDelayed` 的任务，future 同样立刻 `broken_promise`。
 
 ## Demo
 
-`demo/delayed_task_demo.cpp` 覆盖：并行到期、同 token 串行、Cancel、`SubmitDelayed`、Named token。Release 下应全部 PASS。
+`demo/delayed_task_demo.cpp` 覆盖：并行到期、同 token 串行、Cancel、`SubmitDelayed`、Named token、取消后 future `broken_promise`。Release 下应全部 PASS。

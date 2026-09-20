@@ -50,7 +50,9 @@ private:
     std::unique_ptr<SequenceTracker> tracker_;
 
     mutable std::mutex mutex_;
-    std::condition_variable cv_;
+    // shared_ptr so CancelState can hold a weak_ptr and wake us even if the
+    // handle outlives this scheduler.
+    std::shared_ptr<std::condition_variable> cv_;
     std::atomic<bool> stop_{false};
     std::uint64_t next_sequence_num_ = 0;
     std::atomic<std::size_t> in_flight_{0};

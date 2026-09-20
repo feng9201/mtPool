@@ -12,7 +12,8 @@ namespace mtPool {
 DelayedScheduler::DelayedScheduler(TaskExecutor& executor)
     : executor_(executor),
       queue_(std::make_unique<PendingTaskQueue>()),
-      tracker_(std::make_unique<SequenceTracker>()) {
+      tracker_(std::make_unique<SequenceTracker>()),
+      cv_(std::make_shared<std::condition_variable>()) {
     thread_ = std::thread([this] { ThreadMain(); });
 }
 
@@ -29,6 +30,7 @@ DelayedTaskHandle DelayedScheduler::Post(Task task, Duration delay, SequenceToke
     item.task = std::move(task);
     item.token = token;
     item.cancel = std::make_shared<CancelState>();
+    item.cancel->wake = cv_;
     item.run_at = (delay > Duration::zero()) ? (Clock::now() + delay) : Clock::now();
 
     DelayedTaskHandle handle(item.cancel);
@@ -41,12 +43,12 @@ DelayedTaskHandle DelayedScheduler::Post(Task task, Duration delay, SequenceToke
         item.sequence_num = next_sequence_num_++;
         queue_->Insert(std::move(item));
     }
-    cv_.notify_one();
+    cv_->notify_one();
     return handle;
 }
 
 void DelayedScheduler::NotifySequenceReleased() {
-    cv_.notify_one();
+    cv_->notify_one();
 }
 
 void DelayedScheduler::Shutdown() {
@@ -58,18 +60,37 @@ void DelayedScheduler::Shutdown() {
         WaitForInFlight();
         return;
     }
-    cv_.notify_all();
+    cv_->notify_all();
     if (thread_.joinable()) {
         thread_.join();
     }
+
+    // SKIP_ON_SHUTDOWN semantics: pending tasks are cancelled and discarded,
+    // tasks already running on the pool are awaited below. Cancel first so
+    // handles and SubmitDelayed futures observe it (broken_promise), then
+    // destroy the tasks outside the lock: their captures may do real work in
+    // their destructors and could try to post again.
+    std::vector<DelayedTask> discarded;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        discarded = queue_->TakeAll();
+    }
+    for (auto& item : discarded) {
+        if (item.cancel) {
+            item.cancel->TryCancel();
+        }
+    }
+    discarded.clear();
+    cv_->notify_all();
+
     WaitForInFlight();
 }
 
 void DelayedScheduler::WaitUntilIdle() {
     std::unique_lock<std::mutex> lock(mutex_);
-    while (queue_->ActiveCount() != 0 || in_flight_.load() != 0) {
-        cv_.wait_for(lock, std::chrono::milliseconds(5));
-    }
+    cv_->wait(lock, [this] {
+        return queue_->ActiveCount() == 0 && in_flight_.load() == 0;
+    });
 }
 
 std::size_t DelayedScheduler::PendingCount() const {
@@ -101,9 +122,9 @@ void DelayedScheduler::ThreadMain() {
         const TimePoint now = Clock::now();
         const auto wake = queue_->NextWakeTime(now);
         if (!wake.has_value()) {
-            cv_.wait(lock);
+            cv_->wait(lock);
         } else {
-            cv_.wait_until(lock, *wake);
+            cv_->wait_until(lock, *wake);
         }
     }
 }
@@ -135,14 +156,14 @@ void DelayedScheduler::DispatchDueTasks() {
                 tracker_->Release(token);
                 in_flight_.fetch_sub(1);
             }
-            cv_.notify_all();
+            cv_->notify_all();
         });
     }
 }
 
 void DelayedScheduler::WaitForInFlight() {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return in_flight_.load() == 0; });
+    cv_->wait(lock, [this] { return in_flight_.load() == 0; });
 }
 
 }  // namespace mtPool
